@@ -4,8 +4,11 @@ version = "0.1.0"
 authors = ["ashtneoi <ashtneoi@gmail.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
-description = "dep-free HTTP 1.x server lib"
+description = "async-lib-agnostic HTTP 1.x server lib"
 homepage = "https://github.com/ashtneoi/hoot"
 repository = "https://github.com/ashtneoi/hoot"
 keywords = ["http"]
 categories = ["web-programming::http-server"]
+
+[dependencies]
+http = "0.1.15"
