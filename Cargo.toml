@@ -12,3 +12,4 @@ categories = ["web-programming::http-server"]
 
 [dependencies]
 http = "0.1.15"
+regex = "1.1.0"
