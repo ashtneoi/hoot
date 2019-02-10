@@ -15,7 +15,15 @@ mod test {
             r"[\t ]*([!-~\x80-\xFF]([\t -~\x80-\xFF]*[!-~\x80-\xFF])?)[\t ]*$",
         )).unwrap();
         let cap = r.captures(s).unwrap();
-        assert_eq!(&cap[1], &b"Content-Type"[..]);
-        assert_eq!(&cap[2], &b"application/json; charset=\"\xAA\xBB\xCC\""[..]);
+        assert_eq!(
+            HeaderName::from_bytes(&cap[1]).unwrap(),
+            http::header::CONTENT_TYPE,
+        );
+        assert_eq!(
+            HeaderValue::from_bytes(&cap[2]).unwrap(),
+            HeaderValue::from_bytes(
+                &b"application/json; charset=\"\xAA\xBB\xCC\""[..]
+            ).unwrap(),
+        );
     }
 }
