@@ -12,7 +12,7 @@ mod test {
         let r = Regex::new(concat!(
             // token ":" OWS *field-content OWS
             r"(?-u)^([!#$%&'*+.^_`|~0-9A-Za-z-]+):",
-            r"[\t ]*([!-~\x80-\xFF]([\t -~\x80-\xFF]*[!-~\x80-\xFF])?)[\t ]*$",
+            r"[\t ]*([!-~\x80-\xFF]([\t !-~\x80-\xFF]*[!-~\x80-\xFF])?)[\t ]*$",
         )).unwrap();
         let cap = r.captures(s).unwrap();
         assert_eq!(
