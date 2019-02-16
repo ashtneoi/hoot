@@ -29,6 +29,8 @@ impl From<InvalidHeaderValue> for InvalidHeaderField {
 pub fn parse_header_field(s: &[u8])
     -> Result<(HeaderName, HeaderValue), InvalidHeaderField>
 {
+    // doesn't support obs-fold e.g. within message/http yet
+    // (see rfc7230 section 3.2.4)
     lazy_static! {
         static ref R: Regex = Regex::new(concat!(
             // token ":" OWS *field-content OWS
@@ -51,8 +53,6 @@ mod test {
 
     #[test]
     fn test_parse_header_field() {
-        // doesn't support obs-fold e.g. within message/http yet
-        // (see rfc7230 section 3.2.4)
         let s = b"Content-Type: application/json; charset=\"\xAA\xBB\xCC\"";
         let (h, v) = parse_header_field(s).unwrap();
         assert_eq!(
