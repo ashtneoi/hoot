@@ -7,13 +7,25 @@ use http::header::{
 use regex::bytes::Regex;
 
 #[derive(Debug)]
-enum InvalidHeaderField {
+pub enum InvalidHeaderField {
     Syntax,
     Name(InvalidHeaderName),
     Value(InvalidHeaderValue),
 }
 
-fn parse_header_field(s: &[u8])
+impl From<InvalidHeaderName> for InvalidHeaderField {
+    fn from(e: InvalidHeaderName) -> Self {
+        InvalidHeaderField::Name(e)
+    }
+}
+
+impl From<InvalidHeaderValue> for InvalidHeaderField {
+    fn from(e: InvalidHeaderValue) -> Self {
+        InvalidHeaderField::Value(e)
+    }
+}
+
+pub fn parse_header_field(s: &[u8])
     -> Result<(HeaderName, HeaderValue), InvalidHeaderField>
 {
     let r = Regex::new(concat!(
@@ -21,10 +33,10 @@ fn parse_header_field(s: &[u8])
         r"(?-u)^([!#$%&'*+.^_`|~0-9A-Za-z-]+):",
         r"[\t ]*([!-~\x80-\xFF]([\t !-~\x80-\xFF]*[!-~\x80-\xFF])?)[\t ]*$",
     )).unwrap();
-    let cap = r.captures(s).unwrap();
+    let cap = r.captures(s).ok_or(InvalidHeaderField::Syntax)?;
     Ok((
-        HeaderName::from_bytes(&cap[1]).unwrap(),
-        HeaderValue::from_bytes(&cap[2]).unwrap(),
+        HeaderName::from_bytes(&cap[1])?,
+        HeaderValue::from_bytes(&cap[2])?,
     ))
 }
 
@@ -32,7 +44,7 @@ fn parse_header_field(s: &[u8])
 mod test {
     use crate::parse_header_field;
     use http::{Method, Uri, Version};
-    use http::header::{HeaderName, HeaderValue};
+    use http::header::HeaderValue;
 
     #[test]
     fn test_parse_header_field() {
