@@ -4,6 +4,7 @@ use http::header::{
     InvalidHeaderName,
     InvalidHeaderValue,
 };
+use lazy_static::lazy_static;
 use regex::bytes::Regex;
 
 #[derive(Debug)]
@@ -28,12 +29,14 @@ impl From<InvalidHeaderValue> for InvalidHeaderField {
 pub fn parse_header_field(s: &[u8])
     -> Result<(HeaderName, HeaderValue), InvalidHeaderField>
 {
-    let r = Regex::new(concat!(
-        // token ":" OWS *field-content OWS
-        r"(?-u)^([!#$%&'*+.^_`|~0-9A-Za-z-]+):",
-        r"[\t ]*([!-~\x80-\xFF]([\t !-~\x80-\xFF]*[!-~\x80-\xFF])?)[\t ]*$",
-    )).unwrap();
-    let cap = r.captures(s).ok_or(InvalidHeaderField::Syntax)?;
+    lazy_static! {
+        static ref R: Regex = Regex::new(concat!(
+            // token ":" OWS *field-content OWS
+            r"(?-u)^([!#$%&'*+.^_`|~0-9A-Za-z-]+):",
+            r"[\t ]*([!-~\x80-\xFF]([\t !-~\x80-\xFF]*[!-~\x80-\xFF])?)[\t ]*$",
+        )).unwrap();
+    }
+    let cap = R.captures(s).ok_or(InvalidHeaderField::Syntax)?;
     Ok((
         HeaderName::from_bytes(&cap[1])?,
         HeaderValue::from_bytes(&cap[2])?,
