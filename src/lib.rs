@@ -114,6 +114,16 @@ mod test {
         assert_eq!(m, Method::OPTIONS);
         assert_eq!(u.path(), "*");
         assert_eq!(v, Version::HTTP_11);
+
+        let s = b"POST http://foo.example.com/bar?qux=19&qux=xyz HTTP/1.0";
+        let (m, u, v) = parse_request_line(s).unwrap();
+        assert_eq!(m, Method::POST);
+        assert_eq!(u.scheme_str().unwrap(), "http");
+        assert_eq!(u.host().unwrap(), "foo.example.com");
+        assert_eq!(u.port_part(), None);
+        assert_eq!(u.path(), "/bar");
+        assert_eq!(u.query().unwrap(), "qux=19&qux=xyz");
+        assert_eq!(v, Version::HTTP_10);
     }
 
     #[test]
