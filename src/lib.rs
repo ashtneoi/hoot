@@ -4,6 +4,7 @@ use http::{
     Version,
 };
 use http::header::{
+    HeaderMap,
     HeaderName,
     HeaderValue,
     InvalidHeaderName,
@@ -13,6 +14,59 @@ use http::method::InvalidMethod;
 use http::uri::InvalidUriBytes;
 use lazy_static::lazy_static;
 use regex::bytes::Regex;
+
+#[derive(Debug)]
+pub struct Header {
+    pub method: Method,
+    pub uri: Uri,
+    pub version: Version,
+    pub fields: HeaderMap,
+}
+
+#[derive(Debug)]
+pub enum InvalidHeader {
+    Format,
+    RequestLine(InvalidRequestLine),
+    HeaderField(InvalidHeaderField),
+}
+
+impl From<InvalidRequestLine> for InvalidHeader {
+    fn from(e: InvalidRequestLine) -> Self {
+        InvalidHeader::RequestLine(e)
+    }
+}
+
+impl From<InvalidHeaderField> for InvalidHeader {
+    fn from(e: InvalidHeaderField) -> Self {
+        InvalidHeader::HeaderField(e)
+    }
+}
+
+pub fn parse_header<'a>(lines: impl IntoIterator<Item = &'a [u8]>)
+    -> Result<Header, InvalidHeader>
+{
+    let mut lines = lines.into_iter();
+    let request_line_bytes = lines.next().ok_or(InvalidHeader::Format)?;
+    if !request_line_bytes.ends_with(b"\r\n") {
+        return Err(InvalidHeader::Format);
+    }
+    let request_line_bytes =
+        &request_line_bytes[..(request_line_bytes.len() - 2)];
+    let (method, uri, version) = parse_request_line(request_line_bytes)?;
+    let mut fields = HeaderMap::new();
+    for line in lines {
+        if !line.ends_with(b"\r\n") {
+            return Err(InvalidHeader::Format);
+        }
+        let line = &line[..(line.len() - 2)];
+        if line == b"" {
+            return Ok(Header { method, uri, version, fields });
+        }
+        let (name, value) = parse_header_field(line)?;
+        fields.insert(name, value); // TODO: we should care about result, right?
+    }
+    Err(InvalidHeader::Format)
+}
 
 #[derive(Debug)]
 pub enum InvalidRequestLine {
@@ -98,6 +152,7 @@ pub fn parse_header_field(s: &[u8])
 #[cfg(test)]
 mod test {
     use crate::{
+        parse_header,
         parse_request_line,
         parse_header_field,
     };
@@ -106,6 +161,19 @@ mod test {
         Method,
         Version,
     };
+
+    #[test]
+    fn test_parse_header() {
+        // TODO: Ew.
+        let s = vec![
+            &b"POST http://foo.example.com/bar?qux=19&qux=xyz HTTP/1.1\r\n"[..],
+            &b"Host: foo.example.com\r\n"[..],
+            &b"Content-Type: application/json\r\n"[..],
+            &b"\r\n"[..],
+        ];
+
+        parse_header(s).unwrap();
+    }
 
     #[test]
     fn test_parse_request_line() {
