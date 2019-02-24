@@ -164,15 +164,23 @@ mod test {
 
     #[test]
     fn test_parse_header() {
-        // TODO: Ew.
-        let s = vec![
-            &b"POST http://foo.example.com/bar?qux=19&qux=xyz HTTP/1.1\r\n"[..],
-            &b"Host: foo.example.com\r\n"[..],
-            &b"Content-Type: application/json\r\n"[..],
-            &b"\r\n"[..],
+        let s: Vec<&[u8]> = vec![
+            b"POST http://foo.example.com/bar?qux=19&qux=xyz HTTP/1.1\r\n",
+            b"Host: foo.example.com\r\n",
+            b"Content-Type: application/json\r\n",
+            b"\r\n",
         ];
 
-        parse_header(s).unwrap();
+        let h = parse_header(s).unwrap();
+        assert_eq!(h.method, Method::POST);
+        assert_eq!(h.uri.scheme_str().unwrap(), "http");
+        assert_eq!(h.uri.host().unwrap(), "foo.example.com");
+        assert_eq!(h.uri.port_part(), None);
+        assert_eq!(h.uri.path(), "/bar");
+        assert_eq!(h.uri.query().unwrap(), "qux=19&qux=xyz");
+        assert_eq!(h.version, Version::HTTP_11);
+        assert_eq!(h.fields["host"], "foo.example.com");
+        assert_eq!(h.fields["content-type"], "application/json");
     }
 
     #[test]
