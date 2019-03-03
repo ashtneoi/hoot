@@ -14,6 +14,8 @@ use http::method::InvalidMethod;
 use http::uri::InvalidUriBytes;
 use lazy_static::lazy_static;
 use regex::bytes::Regex;
+use std::io;
+use std::io::{BufRead, Read};
 
 #[derive(Debug)]
 pub struct Header {
@@ -28,6 +30,7 @@ pub enum InvalidHeader {
     Format,
     RequestLine(InvalidRequestLine),
     HeaderField(InvalidHeaderField),
+    Io(io::Error),
 }
 
 impl From<InvalidRequestLine> for InvalidHeader {
@@ -42,30 +45,51 @@ impl From<InvalidHeaderField> for InvalidHeader {
     }
 }
 
-pub fn parse_header<'a>(lines: impl IntoIterator<Item = &'a [u8]>)
+impl From<io::Error> for InvalidHeader {
+    fn from(e: io::Error) -> Self {
+        InvalidHeader::Io(e)
+    }
+}
+
+const LINE_CAP: usize = 16384;
+
+pub fn parse_header<B: BufRead>(mut stream: B)
     -> Result<Header, InvalidHeader>
 {
-    let mut lines = lines.into_iter();
-    let request_line_bytes = lines.next().ok_or(InvalidHeader::Format)?;
-    if !request_line_bytes.ends_with(b"\r\n") {
+    // TODO: Why does removing the type from `line` here cause errors?
+    let next_line = |stream: &mut B, line: &mut Vec<u8>| {
+        line.clear();
+        let count = stream
+            .take(LINE_CAP as u64)
+            .read_until('\n' as u8, line)?;
+        match count {
+            0 => Err(InvalidHeader::Format), // FIXME?
+            LINE_CAP => Err(InvalidHeader::Format), // FIXME
+            _ => Ok(()),
+        }
+    };
+
+    let mut line = Vec::with_capacity(LINE_CAP);
+
+    next_line(&mut stream, &mut line)?;
+    if !line.ends_with(b"\r\n") {
         return Err(InvalidHeader::Format);
     }
-    let request_line_bytes =
-        &request_line_bytes[..(request_line_bytes.len() - 2)];
-    let (method, uri, version) = parse_request_line(request_line_bytes)?;
+    line.truncate(line.len() - 2);
+    let (method, uri, version) = parse_request_line(&line[..])?;
     let mut fields = HeaderMap::new();
-    for line in lines {
+    loop {
+        next_line(&mut stream, &mut line)?;
         if !line.ends_with(b"\r\n") {
             return Err(InvalidHeader::Format);
         }
-        let line = &line[..(line.len() - 2)];
+        line.truncate(line.len() - 2);
         if line == b"" {
             return Ok(Header { method, uri, version, fields });
         }
-        let (name, value) = parse_header_field(line)?;
+        let (name, value) = parse_header_field(&line)?;
         fields.insert(name, value); // TODO: we should care about result, right?
     }
-    Err(InvalidHeader::Format)
 }
 
 #[derive(Debug)]
@@ -133,8 +157,14 @@ impl From<InvalidHeaderValue> for InvalidHeaderField {
 pub fn parse_header_field(s: &[u8])
     -> Result<(HeaderName, HeaderValue), InvalidHeaderField>
 {
-    // doesn't support obs-fold e.g. within message/http yet
+    // TODO: support obs-fold e.g. within message/http
     // (see rfc7230 section 3.2.4)
+
+    // rfc7230 section 3.2.4: Server MUST return 400 if there's whitespace
+    // between field name and colon.
+    // rfc7230 section 3.2.4: If obs-fold is used outside a message/http body,
+    // server MUST either return 400 or replace each such obs-fold with one or
+    // more SP chars.
     lazy_static! {
         static ref R: Regex = Regex::new(concat!(
             // token ":" OWS *field-content OWS
@@ -164,14 +194,16 @@ mod test {
 
     #[test]
     fn test_parse_header() {
-        let s: Vec<&[u8]> = vec![
-            b"POST http://foo.example.com/bar?qux=19&qux=xyz HTTP/1.1\r\n",
-            b"Host: foo.example.com\r\n",
-            b"Content-Type: application/json\r\n",
-            b"\r\n",
-        ];
+        let mut s = Vec::new();
+        // TODO: There's a better way to do this, right?
+        s.extend(
+            &b"POST http://foo.example.com/bar?qux=19&qux=xyz HTTP/1.1\r\n"[..]
+        );
+        s.extend(&b"Host: foo.example.com\r\n"[..]);
+        s.extend(&b"Content-Type: application/json\r\n"[..]);
+        s.extend(&b"\r\n"[..]);
 
-        let h = parse_header(s).unwrap();
+        let h = parse_header(&s[..]).unwrap();
         assert_eq!(h.method, Method::POST);
         assert_eq!(h.uri.scheme_str().unwrap(), "http");
         assert_eq!(h.uri.host().unwrap(), "foo.example.com");
