@@ -126,10 +126,16 @@ pub fn parse_request_line(s: &[u8])
         Method::from_bytes(&cap[1])?,
         Uri::from_shared(cap[2].into())?,
         match &cap[3] {
-            b"HTTP/0.9" => Version::HTTP_09,
+            // rfc 7230 section A: "Any server that implements name-based
+            // virtual hosts ought to disable support for HTTP/0.9."
             b"HTTP/1.0" => Version::HTTP_10,
             b"HTTP/1.1" => Version::HTTP_11,
-            b"HTTP/2.0" => Version::HTTP_2,
+            // We don't support HTTP 0.9 or 2.0. 2.0 support may be added later.
+            // FIXME: Can we respond to an invalid version with 505 HTTP
+            // Version Not Supported? If not, unsupported major versions need a
+            // different error than invalid versions.
+            // FIXME: We should probably accept requests with version 1.2 and
+            // higher. Check the spec.
             _ => return Err(InvalidRequestLine::Version),
         },
     ))
