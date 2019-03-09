@@ -1,5 +1,6 @@
 use http::{
     Method,
+    StatusCode,
     Uri,
     Version,
 };
@@ -15,12 +16,19 @@ use http::uri::InvalidUriBytes;
 use lazy_static::lazy_static;
 use regex::bytes::Regex;
 use std::io;
-use std::io::{BufRead, Read};
+use std::io::{BufRead, BufWriter, Read, Write};
 
 #[derive(Debug)]
 pub struct RequestHeader {
     pub method: Method,
     pub uri: Uri,
+    pub version: Version,
+    pub fields: HeaderMap,
+}
+
+#[derive(Debug)]
+pub struct ResponseHeader {
+    pub status_code: StatusCode,
     pub version: Version,
     pub fields: HeaderMap,
 }
@@ -90,6 +98,33 @@ pub fn parse_request_header<B: BufRead>(mut stream: B)
         let (name, value) = parse_header_field(&line)?;
         fields.insert(name, value); // TODO: we should care about result, right?
     }
+}
+
+pub fn write_response_header<W: Write>(header: &ResponseHeader, stream: W)
+    -> io::Result<()>
+{
+    let mut stream = BufWriter::new(stream);
+
+    // TODO: Is this the way you're supposed to format bytes?
+    stream.write_all(
+        match header.version {
+            Version::HTTP_10 => b"HTTP/1.0",
+            Version::HTTP_11 => b"HTTP/1.1",
+            _ => panic!("Unsupported version"), // FIXME: Err? Or really panic?
+        }
+    )?;
+    stream.write_all(b" ")?;
+    stream.write_all(header.status_code.as_str().as_bytes())?;
+    stream.write_all(b" ")?;
+    stream.write_all(
+        header
+        .status_code
+        .canonical_reason()
+        .unwrap_or("Unknown Reason")
+        .as_bytes()
+    )?;
+    // TODO: Write header fields.
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -191,10 +226,16 @@ mod test {
         parse_request_header,
         parse_request_line,
         parse_header_field,
+        ResponseHeader,
+        write_response_header,
     };
-    use http::header::HeaderValue;
+    use http::header::{
+        HeaderMap,
+        HeaderValue,
+    };
     use http::{
         Method,
+        StatusCode,
         Version,
     };
 
@@ -219,6 +260,18 @@ mod test {
         assert_eq!(h.version, Version::HTTP_11);
         assert_eq!(h.fields["host"], "foo.example.com");
         assert_eq!(h.fields["content-type"], "application/json");
+    }
+
+    #[test]
+    fn test_write_response_header() {
+        let mut s = Vec::new();
+        let h = ResponseHeader {
+            status_code: StatusCode::from_u16(404).unwrap(),
+            version: Version::HTTP_11,
+            fields: HeaderMap::new(),
+        };
+        write_response_header(&h, &mut s).unwrap();
+        assert_eq!(s, b"HTTP/1.1 404 Not Found");
     }
 
     #[test]
