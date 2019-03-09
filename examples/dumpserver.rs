@@ -1,10 +1,10 @@
 use hoot::{
-    parse_header,
+    parse_request_header,
 };
 use std::io::stdin;
 
 pub fn main() {
     let s = stdin();
     let sl = s.lock();
-    println!("{:?}", parse_header(sl).unwrap());
+    println!("{:?}", parse_request_header(sl).unwrap());
 }

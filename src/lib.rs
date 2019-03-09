@@ -18,7 +18,7 @@ use std::io;
 use std::io::{BufRead, Read};
 
 #[derive(Debug)]
-pub struct Header {
+pub struct RequestHeader {
     pub method: Method,
     pub uri: Uri,
     pub version: Version,
@@ -26,35 +26,35 @@ pub struct Header {
 }
 
 #[derive(Debug)]
-pub enum InvalidHeader {
+pub enum InvalidRequestHeader {
     Format,
     RequestLine(InvalidRequestLine),
     HeaderField(InvalidHeaderField),
     Io(io::Error),
 }
 
-impl From<InvalidRequestLine> for InvalidHeader {
+impl From<InvalidRequestLine> for InvalidRequestHeader {
     fn from(e: InvalidRequestLine) -> Self {
-        InvalidHeader::RequestLine(e)
+        InvalidRequestHeader::RequestLine(e)
     }
 }
 
-impl From<InvalidHeaderField> for InvalidHeader {
+impl From<InvalidHeaderField> for InvalidRequestHeader {
     fn from(e: InvalidHeaderField) -> Self {
-        InvalidHeader::HeaderField(e)
+        InvalidRequestHeader::HeaderField(e)
     }
 }
 
-impl From<io::Error> for InvalidHeader {
+impl From<io::Error> for InvalidRequestHeader {
     fn from(e: io::Error) -> Self {
-        InvalidHeader::Io(e)
+        InvalidRequestHeader::Io(e)
     }
 }
 
 const LINE_CAP: usize = 16384;
 
-pub fn parse_header<B: BufRead>(mut stream: B)
-    -> Result<Header, InvalidHeader>
+pub fn parse_request_header<B: BufRead>(mut stream: B)
+    -> Result<RequestHeader, InvalidRequestHeader>
 {
     // TODO: Why does removing the type from `line` here cause errors?
     let next_line = |stream: &mut B, line: &mut Vec<u8>| {
@@ -63,8 +63,8 @@ pub fn parse_header<B: BufRead>(mut stream: B)
             .take(LINE_CAP as u64)
             .read_until('\n' as u8, line)?;
         match count {
-            0 => Err(InvalidHeader::Format), // FIXME?
-            LINE_CAP => Err(InvalidHeader::Format), // FIXME
+            0 => Err(InvalidRequestHeader::Format), // FIXME?
+            LINE_CAP => Err(InvalidRequestHeader::Format), // FIXME
             _ => Ok(()),
         }
     };
@@ -73,7 +73,7 @@ pub fn parse_header<B: BufRead>(mut stream: B)
 
     next_line(&mut stream, &mut line)?;
     if !line.ends_with(b"\r\n") {
-        return Err(InvalidHeader::Format);
+        return Err(InvalidRequestHeader::Format);
     }
     line.truncate(line.len() - 2);
     let (method, uri, version) = parse_request_line(&line[..])?;
@@ -81,11 +81,11 @@ pub fn parse_header<B: BufRead>(mut stream: B)
     loop {
         next_line(&mut stream, &mut line)?;
         if !line.ends_with(b"\r\n") {
-            return Err(InvalidHeader::Format);
+            return Err(InvalidRequestHeader::Format);
         }
         line.truncate(line.len() - 2);
         if line == b"" {
-            return Ok(Header { method, uri, version, fields });
+            return Ok(RequestHeader { method, uri, version, fields });
         }
         let (name, value) = parse_header_field(&line)?;
         fields.insert(name, value); // TODO: we should care about result, right?
@@ -188,7 +188,7 @@ pub fn parse_header_field(s: &[u8])
 #[cfg(test)]
 mod test {
     use crate::{
-        parse_header,
+        parse_request_header,
         parse_request_line,
         parse_header_field,
     };
@@ -199,7 +199,7 @@ mod test {
     };
 
     #[test]
-    fn test_parse_header() {
+    fn test_parse_request_header() {
         let mut s = Vec::new();
         // TODO: There's a better way to do this, right?
         s.extend(
@@ -209,7 +209,7 @@ mod test {
         s.extend(&b"Content-Type: application/json\r\n"[..]);
         s.extend(&b"\r\n"[..]);
 
-        let h = parse_header(&s[..]).unwrap();
+        let h = parse_request_header(&s[..]).unwrap();
         assert_eq!(h.method, Method::POST);
         assert_eq!(h.uri.scheme_str().unwrap(), "http");
         assert_eq!(h.uri.host().unwrap(), "foo.example.com");
