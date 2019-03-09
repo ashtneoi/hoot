@@ -29,7 +29,6 @@ pub struct RequestHeader {
 #[derive(Debug)]
 pub struct ResponseHeader {
     pub status_code: StatusCode,
-    pub version: Version,
     pub fields: HeaderMap,
 }
 
@@ -96,7 +95,9 @@ pub fn parse_request_header<B: BufRead>(mut stream: B)
             return Ok(RequestHeader { method, uri, version, fields });
         }
         let (name, value) = parse_header_field(&line)?;
-        fields.insert(name, value); // TODO: we should care about result, right?
+        // TODO: append is okay, right? No syntax issues because we haven't
+        // seralized anything yet.
+        fields.append(name, value); // TODO: we should care about result, right?
     }
 }
 
@@ -106,13 +107,7 @@ pub fn write_response_header<W: Write>(header: &ResponseHeader, stream: W)
     let mut stream = BufWriter::new(stream);
 
     // TODO: Is this the way you're supposed to format bytes?
-    stream.write_all(
-        match header.version {
-            Version::HTTP_10 => b"HTTP/1.0",
-            Version::HTTP_11 => b"HTTP/1.1",
-            _ => panic!("Unsupported version"), // FIXME: Err? Or really panic?
-        }
-    )?;
+    stream.write_all(b"HTTP/1.1")?;
     stream.write_all(b" ")?;
     stream.write_all(header.status_code.as_str().as_bytes())?;
     stream.write_all(b" ")?;
@@ -124,7 +119,29 @@ pub fn write_response_header<W: Write>(header: &ResponseHeader, stream: W)
         .as_bytes()
     )?;
     stream.write_all(b"\r\n")?;
-    // TODO: Write header fields.
+    for key in header.fields.keys() {
+        let mut values = header.fields.get_all(key).into_iter().peekable();
+        stream.write_all(key.as_str().as_bytes())?;
+        stream.write_all(b": ")?;
+        match values.next() {
+            Some(v) => stream.write_all(v.as_bytes())?,
+            None => panic!("what?"),
+        }
+        if values.peek().is_some() {
+            let separate_fields = key == "set-cookie";
+            for v in values {
+                if separate_fields {
+                    stream.write_all(b"\r\n")?;
+                    stream.write_all(key.as_str().as_bytes())?;
+                    stream.write_all(b": ")?;
+                } else {
+                    stream.write_all(b",")?;
+                }
+                stream.write_all(v.as_bytes())?;
+            }
+        }
+        stream.write_all(b"\r\n")?;
+    }
     stream.write_all(b"\r\n")?;
     Ok(())
 }
@@ -218,6 +235,7 @@ pub fn parse_header_field(s: &[u8])
     let cap = R.captures(s).ok_or(InvalidHeaderField::Format)?;
     Ok((
         HeaderName::from_bytes(&cap[1])?,
+        // TODO: HeaderValue might not fully validate input.
         HeaderValue::from_bytes(&cap[2])?,
     ))
 }
@@ -267,13 +285,31 @@ mod test {
     #[test]
     fn test_write_response_header() {
         let mut s = Vec::new();
-        let h = ResponseHeader {
+        let mut h = ResponseHeader {
             status_code: StatusCode::from_u16(404).unwrap(),
-            version: Version::HTTP_11,
             fields: HeaderMap::new(),
         };
         write_response_header(&h, &mut s).unwrap();
         assert_eq!(s, b"HTTP/1.1 404 Not Found\r\n\r\n");
+
+        h.fields.append("set-cookie", HeaderValue::from_static(
+            "FOO=\"some text\""
+        ));
+        h.fields.append("Set-cookie", HeaderValue::from_static(
+            "BAR=\"some other text\""
+        ));
+        h.fields.append("LOCATION", HeaderValue::from_static(
+            "http://example.com:3180/foo&bar"
+        ));
+        h.fields.append("Content-Language", HeaderValue::from_static(
+            "en"
+        ));
+        h.fields.append("Content-Language", HeaderValue::from_static(
+            "de"
+        ));
+        s.clear();
+        write_response_header(&h, &mut s).unwrap();
+        assert!(s.starts_with(b"HTTP/1.1 404 Not Found\r\n"));
     }
 
     #[test]
