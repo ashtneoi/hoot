@@ -123,7 +123,9 @@ pub fn write_response_header<W: Write>(header: &ResponseHeader, stream: W)
         .unwrap_or("Unknown Reason")
         .as_bytes()
     )?;
+    stream.write_all(b"\r\n")?;
     // TODO: Write header fields.
+    stream.write_all(b"\r\n")?;
     Ok(())
 }
 
@@ -271,7 +273,7 @@ mod test {
             fields: HeaderMap::new(),
         };
         write_response_header(&h, &mut s).unwrap();
-        assert_eq!(s, b"HTTP/1.1 404 Not Found");
+        assert_eq!(s, b"HTTP/1.1 404 Not Found\r\n\r\n");
     }
 
     #[test]
