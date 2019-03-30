@@ -18,6 +18,12 @@ use regex::bytes::Regex;
 use std::io;
 use std::io::{BufRead, BufWriter, Read, Write};
 
+pub mod media_type;
+
+static QUOTED_STRING_1G: &str =
+    r#""([\t !#-\[\]-~\x80-\xFF]|\\[\t !-~\x80-\xFF])*""#;
+static TOKEN: &str = r"[!#$%&'*+.^_`|~0-9A-Za-z-]+";
+
 #[derive(Debug)]
 pub struct RequestHeader {
     pub method: Method,
@@ -226,10 +232,12 @@ pub fn parse_header_field(s: &[u8])
     // server MUST either return 400 or replace each such obs-fold with one or
     // more SP chars.
     lazy_static! {
-        static ref R: Regex = Regex::new(concat!(
+        static ref R: Regex = Regex::new(&(String::new()
             // token ":" OWS *field-content OWS
-            r"(?-u)^([!#$%&'*+.^_`|~0-9A-Za-z-]+):",
-            r"[\t ]*([!-~\x80-\xFF]([\t !-~\x80-\xFF]*[!-~\x80-\xFF])?)[\t ]*$",
+            + r"(?-u)^(" + TOKEN + "):"
+            + r"[\t ]*"
+            + r"([!-~\x80-\xFF]([\t !-~\x80-\xFF]*[!-~\x80-\xFF])?)"
+            + r"[\t ]*$"
         )).unwrap();
     }
     let cap = R.captures(s).ok_or(InvalidHeaderField::Format)?;
