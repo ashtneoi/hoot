@@ -30,8 +30,9 @@ pub fn parse_media_type(mut s: &[u8]) -> Result<MediaType, InvalidMediaType> {
 
     let cap = R1.captures(s).ok_or(InvalidMediaType)?;
     let mut m = MediaType {
-        type_: String::from_utf8(cap[1].to_vec()).unwrap(),
-        subtype: String::from_utf8(cap[2].to_vec()).unwrap(),
+        // TODO: Benchmark this. Maybe use unchecked?
+        type_: String::from_utf8(cap[1].to_ascii_lowercase()).unwrap(),
+        subtype: String::from_utf8(cap[2].to_ascii_lowercase()).unwrap(),
         parameters: HashMap::new(),
     };
     s = &s[cap.get(0).unwrap().end()..];
@@ -52,7 +53,7 @@ pub fn parse_media_type(mut s: &[u8]) -> Result<MediaType, InvalidMediaType> {
             value = cap[2].to_vec();
         }
         m.parameters.insert(
-            String::from_utf8(cap[1].to_vec()).unwrap(),
+            String::from_utf8(cap[1].to_ascii_lowercase()).unwrap(),
             value,
         );
         s = &s[cap.get(0).unwrap().end()..];
@@ -73,7 +74,7 @@ mod test {
     fn test_parse_media_type() {
         assert_eq!(
             parse_media_type(
-                b"application/json"
+                b"appLICATION/Json"
             ).unwrap(),
             MediaType {
                 type_: "application".to_string(),
@@ -87,7 +88,7 @@ mod test {
 
         assert_eq!(
             parse_media_type(
-                b"text/plain; charset=utf-8"
+                b"text/plain; Charset=utf-8"
             ).unwrap(),
             MediaType {
                 type_: "text".to_string(),
