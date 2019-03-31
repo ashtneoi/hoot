@@ -103,7 +103,22 @@ mod test {
             MediaType {
                 type_: "text".to_string(),
                 subtype: "plain".to_string(),
-                parameters: p.clone(),
+                parameters: p,
+            },
+        );
+
+        let mut p = HashMap::new();
+        p.insert("012".to_string(), b"\x80()\xFF".to_vec());
+        p.insert("-|~'".to_string(), b"".to_vec());
+
+        assert_eq!(
+            parse_media_type(
+                b"!/&^ ; -|~'=\"\";012=\"\x80\\()\xFF\""
+            ).unwrap(),
+            MediaType {
+                type_: "!".to_string(),
+                subtype: "&^".to_string(),
+                parameters: p,
             },
         );
     }
